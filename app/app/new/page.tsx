@@ -71,10 +71,27 @@ export default function NewAnalysisPage() {
     return false;
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     setInvention(form);
     setLoading(true);
     setCurrentStep(0);
+
+    try {
+      // Save invention payload to PostgreSQL database via API
+      const res = await fetch('/api/inventions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.warn('API save notice:', errorData.error);
+      }
+    } catch (err: any) {
+      console.warn('Backend save notice:', err.message);
+    }
+
     const stepInterval = setInterval(() => {
       setCurrentStep((prev) => {
         if (prev >= loadingSteps.length - 1) {

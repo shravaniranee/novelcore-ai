@@ -111,7 +111,52 @@ function SidebarContent() {
   );
 }
 
+import { LogOut } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
 function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
+  const router = useRouter();
+  const [user, setUser] = useState<{ name?: string; email?: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated && data.user) {
+          setUser(data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      toast.success('Logged out successfully');
+      router.push('/login');
+      router.refresh();
+    } catch {
+      toast.error('Failed to logout');
+    }
+  };
+
+  const getInitials = (name?: string, email?: string) => {
+    if (name) {
+      const parts = name.trim().split(' ');
+      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+      return name.substring(0, 2).toUpperCase();
+    }
+    if (email) return email.substring(0, 2).toUpperCase();
+    return 'IN';
+  };
+
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border/60 bg-background/80 px-4 backdrop-blur-xl sm:px-6">
       <div className="flex items-center gap-3">
@@ -150,11 +195,29 @@ function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
             <TooltipContent>Notifications</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Avatar className="h-8 w-8 border border-border">
-          <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-xs font-semibold text-white">
-            IN
-          </AvatarFallback>
-        </Avatar>
+
+        {/* User Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-2 rounded-full p-0.5 transition-all hover:ring-2 hover:ring-primary/40 focus:outline-none">
+              <Avatar className="h-8 w-8 border border-border">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-accent text-xs font-semibold text-white">
+                  {getInitials(user?.name, user?.email)}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="p-2 border-b border-border/60">
+              <p className="text-sm font-semibold text-foreground truncate">{user?.name || 'Innovator'}</p>
+              <p className="text-xs text-muted-foreground truncate">{user?.email || 'innovator@novelcore.ai'}</p>
+            </div>
+            <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

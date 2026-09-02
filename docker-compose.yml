@@ -1,0 +1,35 @@
+# ==============================================================================
+# NovelCore AI - Local Database Infrastructure (PostgreSQL + pgvector)
+# ==============================================================================
+# This configuration provisions a local PostgreSQL 16 container pre-configured
+# with the pgvector extension for vector embeddings (RAG & semantic search).
+#
+# Environment variables are loaded from `.env` or `.env.local` with fallback defaults.
+# Prisma compatibility is achieved via standard PostgreSQL port mapping (5432).
+# ==============================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: novelcore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_local_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-novelcore}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Persistent volume for database data
+      - postgres_data:/var/lib/postgresql/data
+      # Initialization script to automatically enable pgvector extension on startup
+      - ./scripts/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-novelcore}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local

@@ -1,0 +1,355 @@
+// ==============================================================================
+// NovelCore AI - Production Relational & Vector Database Schema
+// ==============================================================================
+// Provider: PostgreSQL + pgvector
+// Features: Multi-Tenancy (Organizations), Multi-Version Claims, Historical
+// Analysis Runs, Prior Art Vector Embeddings, AI Examiner Reviews, and Reports.
+// ==============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ------------------------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------------------------
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InventionStatus {
+  DRAFT
+  ANALYZING
+  ANALYZED
+  PATENT_READY
+  ARCHIVED
+}
+
+enum AnalysisStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ImpactLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ClaimType {
+  INDEPENDENT
+  DEPENDENT
+}
+
+enum ClaimStatus {
+  DRAFT
+  OPTIMIZED
+  ACCEPTED
+  REJECTED
+}
+
+enum ObjectionCategory {
+  NOVELTY_102
+  OBVIOUSNESS_103
+  ENABLEMENT_112
+  DEFINITENESS_112
+  OTHER
+}
+
+enum ReportStatus {
+  GENERATING
+  READY
+  FAILED
+}
+
+// ------------------------------------------------------------------------------
+// CORE MODELS
+// ------------------------------------------------------------------------------
+
+model HealthCheck {
+  id        String   @id @default(uuid())
+  status    String   @default("ok")
+  createdAt DateTime @default(now())
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  password  String?  // Secure bcrypt password hash for local credential auth
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships OrganizationMember[]
+  inventions  Invention[]
+  reports     Report[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members    OrganizationMember[]
+  inventions Invention[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrgRole      @default(MEMBER)
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+model Invention {
+  id              String          @id @default(uuid())
+  userId          String
+  organizationId  String?
+  title           String
+  problem         String          @db.Text
+  solution        String          @db.Text
+  howItWorks      String          @db.Text
+  advantages      String          @db.Text
+  differentiation String          @db.Text
+  domain          String
+  industry        String
+  status          InventionStatus @default(DRAFT)
+  
+  // Vector embedding column & model tracking metadata
+  embedding       Unsupported("vector(1536)")?
+  embeddingModel  String?
+  embeddingDim    Int?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  analysisRuns    AnalysisRun[]
+  claims          Claim[]
+  examinerReviews ExaminerReview[]
+  reports         Report[]
+  opportunities   AnalysisOpportunity[]
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([domain])
+  @@map("inventions")
+}
+
+model AnalysisRun {
+  id                      String          @id @default(uuid())
+  inventionId             String
+  status                  AnalysisStatus  @default(QUEUED)
+  currentStep             Int             @default(0)
+  noveltyScore            Int?
+  patentabilityScore      Int?
+  priorArtRisk            RiskLevel?
+  industrialApplicability ImpactLevel?
+  understanding           String?         @db.Text
+  concepts                String[]        @default([])
+  ipcCodes                String[]        @default([])
+  error                   String?         @db.Text
+  createdAt               DateTime        @default(now())
+  completedAt             DateTime?
+
+  invention Invention @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+
+  priorArtMatches PriorArtMatch[]
+  opportunities   AnalysisOpportunity[]
+  reports         Report[]
+
+  @@index([inventionId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("analysis_runs")
+}
+
+model PriorArtDocument {
+  id                String    @id @default(uuid())
+  publicationNumber String    @unique
+  title             String
+  abstract          String    @db.Text
+  claimsText        String?   @db.Text
+  source            String    // USPTO, EPO, GooglePatents, ArXiv
+  jurisdiction      String    @default("US")
+  filingDate        DateTime?
+  publicationDate   DateTime?
+  ipcCodes          String[]  @default([])
+  metadata          Json?     @default("{}")
+
+  // Vector embedding column using pgvector (1536 dimensions for vector similarity search)
+  embedding         Unsupported("vector(1536)")?
+  embeddingModel    String?
+  embeddingDim      Int?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  matches PriorArtMatch[]
+
+  @@index([source])
+  @@index([jurisdiction])
+  @@map("prior_art_documents")
+}
+
+model PriorArtMatch {
+  id               String   @id @default(uuid())
+  analysisRunId    String
+  priorArtDocId    String
+  similarityScore  Float    // 0.0 - 1.0 or percentage
+  overlap          String[] @default([])
+  matchedConcepts  String[] @default([])
+  technologyDomain String?
+  explanation      String?  @db.Text
+  ranking          Int      @default(1)
+  createdAt        DateTime @default(now())
+
+  analysisRun AnalysisRun      @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  document    PriorArtDocument @relation(fields: [priorArtDocId], references: [id], onDelete: Cascade)
+
+  @@unique([analysisRunId, priorArtDocId])
+  @@index([analysisRunId])
+  @@index([priorArtDocId])
+  @@index([similarityScore])
+  @@map("prior_art_matches")
+}
+
+model Claim {
+  id                String      @id @default(uuid())
+  inventionId       String
+  claimNumber       Int
+  claimType         ClaimType   @default(INDEPENDENT)
+  parentClaimNumber Int?
+  title             String?
+  status            ClaimStatus @default(DRAFT)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  invention Invention      @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  versions  ClaimVersion[]
+
+  @@unique([inventionId, claimNumber])
+  @@index([inventionId])
+  @@map("claims")
+}
+
+model ClaimVersion {
+  id                     String   @id @default(uuid())
+  claimId                String
+  versionNumber          Int
+  claimText              String   @db.Text
+  isOriginal             Boolean  @default(false)
+  isOptimized            Boolean  @default(false)
+  riskReduction          String?
+  differentiationNotes   String?  @db.Text
+  elementOverlapAnalysis Json?    @default("[]")
+  createdAt              DateTime @default(now())
+
+  claim Claim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, versionNumber])
+  @@index([claimId])
+  @@map("claim_versions")
+}
+
+model ExaminerReview {
+  id                String            @id @default(uuid())
+  inventionId       String
+  overallRisk       RiskLevel         @default(MEDIUM)
+  objectionCategory ObjectionCategory
+  severity          RiskLevel         @default(MEDIUM)
+  title             String
+  concern           String            @db.Text
+  evidence          String?           @db.Text
+  recommendation    String            @db.Text
+  isResolved        Boolean           @default(false)
+  resolvedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  invention Invention @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+
+  @@index([inventionId])
+  @@index([isResolved])
+  @@index([severity])
+  @@map("examiner_reviews")
+}
+
+model Report {
+  id            String       @id @default(uuid())
+  inventionId   String
+  analysisRunId String?
+  userId        String
+  title         String
+  status        ReportStatus @default(GENERATING)
+  fileUrl       String?
+  fileKey       String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  invention   Invention    @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  analysisRun AnalysisRun? @relation(fields: [analysisRunId], references: [id], onDelete: SetNull)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([inventionId])
+  @@index([userId])
+  @@index([status])
+  @@map("reports")
+}
+
+model AnalysisOpportunity {
+  id                String      @id @default(uuid())
+  inventionId       String
+  analysisRunId     String?
+  title             String
+  impact            ImpactLevel @default(MEDIUM)
+  whyItMatters      String      @db.Text
+  expectedImpact    String      @db.Text
+  recommendedAction String      @db.Text
+  applied           Boolean     @default(false)
+  appliedAt         DateTime?
+  createdAt         DateTime    @default(now())
+
+  invention   Invention    @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  analysisRun AnalysisRun? @relation(fields: [analysisRunId], references: [id], onDelete: SetNull)
+
+  @@index([inventionId])
+  @@index([analysisRunId])
+  @@index([applied])
+  @@map("analysis_opportunities")
+}
