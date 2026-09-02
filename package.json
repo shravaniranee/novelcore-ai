@@ -4,18 +4,21 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "postinstall": "prisma generate",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f",
     "db:reset": "docker compose down -v && docker compose up -d",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name init",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "npx tsx prisma/seed.ts",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "test:groq-live": "npx tsx --env-file=.env scripts/test-groq-live.ts"
   },
   "dependencies": {

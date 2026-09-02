@@ -28,7 +28,7 @@ yarn-error.log*
 .env
 .env.local
 .env*.local
-
+.neon-urls
 
 # vercel
 .vercel
