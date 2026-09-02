@@ -575,23 +575,12 @@ async function doInventionAnalysis(
     data: { status: 'ANALYZED' },
   });
 
-  // 11. Create or Update Report record in PostgreSQL
-  try {
-    await prisma.report.create({
-      data: {
-        inventionId: dbInvention.id,
-        analysisRunId: analysisRun.id,
-        userId: dbInvention.userId,
-        title: `Comprehensive Patentability Intelligence Report: ${invention.title}`,
-        status: 'READY',
-      },
-    });
-  } catch {
-    // Continue safely
-  }
+  // Phase 11: Unified Report is generated explicitly via POST /api/analysis/[id]/report
+  // after analysis evidence is complete. Do NOT create an incomplete READY report stub here.
 
   // 12. Synthesize Coherent AnalysisData Payload
   const fullAnalysisData: AnalysisData = {
+    id: analysisRun.id,
     title: invention.title,
     patentTitle: `System and Method for ${invention.title}`,
     novelty: calculatedNovelty,

@@ -90,8 +90,10 @@ enum ExaminerFindingType {
 }
 
 enum ReportStatus {
+  DRAFT
   GENERATING
   READY
+  COMPLETED
   FAILED
 }
 
@@ -443,25 +445,60 @@ model ExaminerFinding {
 }
 
 model Report {
-  id            String       @id @default(uuid())
-  inventionId   String
-  analysisRunId String?
-  userId        String
-  title         String
-  status        ReportStatus @default(GENERATING)
-  fileUrl       String?
-  fileKey       String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id                    String       @id @default(uuid())
+  inventionId           String
+  analysisRunId         String       @unique
+  userId                String
+  title                 String
+  status                ReportStatus @default(GENERATING)
+  reportVersion         Int          @default(1)
+  executiveSummary      String?      @db.Text
+  overallAssessment     String?      @db.Text
+  finalRecommendation   String?
+  recommendationReason  String?      @db.Text
+  sectionsSnapshot      Json?        @default("{}")
+  evidenceSources       Json?        @default("[]")
+  provenance            String       @default("DETERMINISTIC") // 'DETERMINISTIC' | 'GROQ_ASSISTED'
+  disclaimer            String?      @db.Text
+  fileUrl               String?
+  fileKey               String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
-  invention   Invention    @relation(fields: [inventionId], references: [id], onDelete: Cascade)
-  analysisRun AnalysisRun? @relation(fields: [analysisRunId], references: [id], onDelete: SetNull)
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invention   Invention        @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  analysisRun AnalysisRun      @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evidence    ReportEvidence[]
 
   @@index([inventionId])
   @@index([userId])
   @@index([status])
   @@map("reports")
+}
+
+/// Relational evidence traceability for unified reports (Phase 11).
+/// Validated structured sections live in Report.sectionsSnapshot (Zod-validated snapshot)
+/// to avoid unnecessary ReportSection table complexity while preserving queryable evidence rows.
+model ReportEvidence {
+  id                String   @id @default(uuid())
+  reportId          String
+  sectionKey        String
+  sourceType        String
+  sourceId          String
+  featureKey        String?
+  publicationNumber String?
+  claimNumber       Int?
+  elementKey        String?
+  description       String?  @db.Text
+  createdAt         DateTime @default(now())
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, sectionKey, sourceType, sourceId])
+  @@index([reportId])
+  @@index([sourceType])
+  @@index([sourceId])
+  @@map("report_evidence")
 }
 
 model AnalysisOpportunity {
