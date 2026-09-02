@@ -68,6 +68,10 @@ export class PatentsViewProvider implements PatentProvider {
    * Search USPTO PatentsView API using official query syntax.
    */
   public async search(options: PatentSearchOptions): Promise<NormalizedPatentDocument[]> {
+    if (process.env.DEMO_MODE !== 'false') {
+      throw new Error('Safety Violation: PatentsViewProvider is disabled while DEMO_MODE is active.');
+    }
+
     const apiKey = this.getApiKey();
     const limit = Math.min(Math.max(options.limit || 10, 1), 20);
     const page = Math.floor((options.offset || 0) / limit) + 1;
@@ -235,5 +239,13 @@ export class PatentsViewProvider implements PatentProvider {
       url: `https://patentsview.org/patent/${patentNum}`,
       rawMetadata: raw || {},
     };
+  }
+
+  public async getByPublicationNumber(publicationNumber: string): Promise<NormalizedPatentDocument | null> {
+    return this.getDocument(publicationNumber);
+  }
+
+  public async getById(id: string): Promise<NormalizedPatentDocument | null> {
+    return this.getDocument(id);
   }
 }

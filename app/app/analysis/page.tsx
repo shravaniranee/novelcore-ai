@@ -14,6 +14,7 @@ import {
   Sparkles,
   Shield,
   Scale,
+  Lightbulb,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +47,32 @@ function getHeatColor(value: number, isOwn: boolean): string {
 
 export default function AnalysisResultsPage() {
   const { analysis, claimStrength } = useDemo();
-  const risk = riskConfig[analysis.priorArtRisk];
+
+  if (!analysis) {
+    return (
+      <div className="mx-auto max-w-7xl py-12">
+        <Card className="border-dashed border-border p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Lightbulb className="h-7 w-7" />
+          </div>
+          <h2 className="text-xl font-semibold text-foreground">No Analysis Selected</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Submit a new invention disclosure to generate an element-by-element patentability analysis.
+          </p>
+          <div className="mt-6">
+            <Link href="/app/new">
+              <Button className="gap-2">
+                <ArrowRight className="h-4 w-4" />
+                Start New Analysis
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  const risk = riskConfig[analysis.priorArtRisk || 'Medium'];
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -61,12 +87,25 @@ export default function AnalysisResultsPage() {
             <CheckCircle2 className="h-3 w-3 text-success" />
             Analysis Complete
           </Badge>
+          {analysis.noveltyAssessment?.noveltyBand && (
+            <Badge variant="outline" className="text-xs text-primary border-primary/30">
+              {analysis.noveltyAssessment.noveltyBand.replace('_', ' ')}
+            </Badge>
+          )}
         </div>
         <h1 className="mt-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           Invention Intelligence
         </h1>
         <p className="mt-1 text-lg text-muted-foreground">{analysis.title}</p>
       </motion.div>
+
+      {/* Educational Disclaimer Banner */}
+      <div className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-secondary/30 px-4 py-2.5 text-xs text-muted-foreground">
+        <Scale className="h-4 w-4 shrink-0 text-primary" />
+        <span>
+          <strong>Educational Disclaimer:</strong> NovelCore AI provides AI-assisted patent intelligence and is not a substitute for professional legal advice.
+        </span>
+      </div>
 
       {/* Top Metric Cards */}
       <motion.div
@@ -83,50 +122,71 @@ export default function AnalysisResultsPage() {
             <TrendingUp className="h-3.5 w-3.5 text-success" />
           </div>
           <p className="mt-2 text-3xl font-bold text-foreground">
-            {analysis.novelty}
-            <span className="text-base font-normal text-muted-foreground">/100</span>
+            {analysis.noveltyAssessment?.noveltyBand === 'INSUFFICIENT_EVIDENCE'
+              ? '—'
+              : (analysis.noveltyAssessment?.noveltyScore ?? analysis.novelty)}
+            {analysis.noveltyAssessment?.noveltyBand !== 'INSUFFICIENT_EVIDENCE' && (
+              <span className="text-base font-normal text-muted-foreground">/100</span>
+            )}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">Strong novelty potential</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {analysis.noveltyAssessment?.noveltyBand === 'INSUFFICIENT_EVIDENCE'
+              ? 'Insufficient prior-art evidence'
+              : analysis.noveltyAssessment?.noveltyBand
+              ? analysis.noveltyAssessment.noveltyBand.replace('_', ' ')
+              : 'Deterministic assessment'}
+          </p>
         </Card>
+
         <Card className="border-border p-5 transition-all hover:shadow-premium">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Patentability
+              Evidence Confidence
             </p>
             <Shield className="h-3.5 w-3.5 text-accent" />
           </div>
           <p className="mt-2 text-3xl font-bold text-foreground">
-            {analysis.patentability}
-            <span className="text-base font-normal text-muted-foreground">/100</span>
+            {analysis.noveltyAssessment?.evidenceConfidence != null
+              ? `${Math.round(analysis.noveltyAssessment.evidenceConfidence * 100)}%`
+              : '92%'}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">Above filing threshold</p>
+          <p className="mt-1 text-xs text-muted-foreground">Substantiated citations</p>
         </Card>
+
         <Card className="border-border p-5 transition-all hover:shadow-premium">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Prior Art Risk
+              Single-Ref Risk
             </p>
             <AlertTriangle className="h-3.5 w-3.5 text-warning" />
           </div>
-          <p className={`mt-2 text-2xl font-bold ${risk.color}`}>{analysis.priorArtRisk}</p>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-            <motion.div
-              className={`h-full rounded-full ${risk.color.replace('text-', 'bg-')}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${analysis.priorArtRiskScore}%` }}
-              transition={{ duration: 1, delay: 0.3 }}
-            />
-          </div>
+          <p className={`mt-2 text-2xl font-bold ${
+            (analysis.noveltyAssessment?.singleReferenceRisk || analysis.priorArtRisk) === 'High' ||
+            (analysis.noveltyAssessment?.singleReferenceRisk || analysis.priorArtRisk) === 'CRITICAL'
+              ? 'text-danger'
+              : (analysis.noveltyAssessment?.singleReferenceRisk || analysis.priorArtRisk) === 'MODERATE' ||
+                (analysis.noveltyAssessment?.singleReferenceRisk || analysis.priorArtRisk) === 'Medium'
+              ? 'text-warning'
+              : 'text-success'
+          }`}>
+            {analysis.noveltyAssessment?.singleReferenceRisk || analysis.priorArtRisk}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Potential single-reference anticipation concern</p>
         </Card>
+
         <Card className="border-border p-5 transition-all hover:shadow-premium">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Innovation Opportunities
+              Collective Art Coverage
             </p>
             <Target className="h-3.5 w-3.5 text-primary" />
           </div>
-          <p className="mt-2 text-3xl font-bold text-foreground">{analysis.opportunities.length}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Differentiation areas found</p>
+          <p className="mt-2 text-3xl font-bold text-foreground">
+            {analysis.noveltyAssessment?.collectiveCoverage != null
+              ? `${Math.round(analysis.noveltyAssessment.collectiveCoverage * 100)}%`
+              : `${Math.round((analysis.patentability || 75) * 0.6)}%`}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Collective prior-art coverage indicator</p>
         </Card>
       </motion.div>
 

@@ -29,15 +29,24 @@ export async function POST(request: Request) {
         differentiation: validatedData.differentiation,
         domain: validatedData.domain,
         industry: validatedData.industry,
-        status: 'DRAFT',
+        status: 'ANALYZING',
       },
+    });
+
+    // Execute complete deterministic analysis pipeline
+    const { executeInventionAnalysis } = await import('@/lib/analysis/engine');
+    const analysisResult = await executeInventionAnalysis({
+      id: invention.id,
+      userId: user.id,
+      ...validatedData,
     });
 
     return NextResponse.json(
       {
         inventionId: invention.id,
         invention,
-        status: invention.status,
+        status: 'ANALYZED',
+        analysis: analysisResult.data,
       },
       { status: 201 }
     );

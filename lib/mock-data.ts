@@ -32,9 +32,20 @@ export interface InnovationOpportunity {
   expectedImpact: string;
   recommendedAction: string;
   applied: boolean;
+  gapType?: string;
+  opportunityKey?: string;
+  relatedFeatureKeys?: string[];
+  supportingPriorArtIds?: string[];
+  coverage?: number;
+  confidence?: number;
+  differentiationScore?: number;
+  limitations?: string;
+  explanation?: string;
+  explanationProvenance?: string;
 }
 
 export interface AnalysisData {
+  id?: string;
   title: string;
   patentTitle: string;
   novelty: number;
@@ -119,6 +130,19 @@ export interface AnalysisData {
     label: string;
     done: boolean;
   }[];
+  analysisMode?: 'LIVE_GROQ' | 'DETERMINISTIC_FALLBACK' | string;
+  noveltyAssessment?: {
+    noveltyScore: number;
+    noveltyBand: string;
+    evidenceConfidence: number;
+    singleReferenceRisk: string;
+    collectiveCoverage: number;
+    patentabilityRisk: string;
+    scoringBreakdown?: any;
+    evidenceReferences?: any[];
+    referenceAssessments?: any[];
+    groqExplanation?: string;
+  };
 }
 
 export const demoInvention: InventionInput = {

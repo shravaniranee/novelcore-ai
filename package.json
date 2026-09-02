@@ -14,7 +14,9 @@
     "db:reset": "docker compose down -v && docker compose up -d",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name init",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "npx tsx prisma/seed.ts",
+    "test:groq-live": "npx tsx --env-file=.env scripts/test-groq-live.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

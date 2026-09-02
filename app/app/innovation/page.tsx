@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Boxes,
   Eye,
+  Scale,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,14 @@ const impactConfig = {
   Low: { color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
 };
 
+const gapTypeConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  POTENTIALLY_DISTINCTIVE: { label: 'Potentially Distinctive', color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  UNDERSERVED: { label: 'Underserved Area', color: 'text-success', bg: 'bg-success/10', border: 'border-success/30' },
+  PARTIALLY_EXPLORED: { label: 'Partially Explored', color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/30' },
+  MODERATELY_EXPLORED: { label: 'Moderately Explored', color: 'text-muted-foreground', bg: 'bg-secondary/60', border: 'border-border/60' },
+  CROWDED: { label: 'Crowded Area', color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/30' },
+};
+
 const differentiationConfig = {
   Strong: { color: 'text-success', bg: 'bg-success/10' },
   Moderate: { color: 'text-warning', bg: 'bg-warning/10' },
@@ -50,6 +59,30 @@ const yourIcons = [Cpu, Layers, ShieldCheck, Clock];
 
 export default function InnovationGapPage() {
   const { analysis, applyOpportunity } = useDemo();
+
+  if (!analysis || !analysis.opportunities || analysis.opportunities.length === 0) {
+    return (
+      <div className="mx-auto max-w-7xl py-12">
+        <Card className="border-dashed border-border p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Target className="h-7 w-7" />
+          </div>
+          <h2 className="text-xl font-semibold text-foreground">No Innovation Gaps Available</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Submit an invention to uncover patent white space and strategic architectural recommendations.
+          </p>
+          <div className="mt-6">
+            <Link href="/app/new">
+              <Button className="gap-2">
+                <ArrowRight className="h-4 w-4" />
+                Start New Analysis
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -66,6 +99,14 @@ export default function InnovationGapPage() {
           See where your invention can differentiate from existing solutions.
         </p>
       </motion.div>
+
+      {/* Educational Disclaimer Banner */}
+      <div className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-secondary/30 px-4 py-2.5 text-xs text-muted-foreground">
+        <Scale className="h-4 w-4 shrink-0 text-primary" />
+        <span>
+          <strong>Educational Disclaimer:</strong> NovelCore AI provides AI-assisted patent intelligence and is not a substitute for professional legal advice. Innovation gaps describe the retrieved prior-art landscape only.
+        </span>
+      </div>
 
       {/* Comparison Layout */}
       <motion.div
@@ -201,8 +242,17 @@ export default function InnovationGapPage() {
           </div>
           <h2 className="text-lg font-semibold text-foreground">AI-Identified Innovation Gaps</h2>
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {analysis.opportunities.map((opp, i) => {
+        {(analysis.opportunities || []).length === 0 ? (
+          <Card className="flex flex-col items-center justify-center border-dashed border-border py-16 text-center">
+            <Target className="mb-3 h-10 w-10 text-muted-foreground/40" />
+            <h3 className="text-base font-semibold text-foreground">No innovation gaps identified</h3>
+            <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+              Run an invention analysis to uncover differentiated whitespace opportunities.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {(analysis.opportunities || []).map((opp, i) => {
             const cfg = impactConfig[opp.impact];
             return (
               <motion.div
@@ -212,17 +262,35 @@ export default function InnovationGapPage() {
                 transition={{ duration: 0.4, delay: 0.4 + i * 0.08 }}
               >
                 <Card className={`h-full border-border p-5 transition-all hover:shadow-premium ${opp.applied ? 'border-success/30' : ''}`}>
-                  <div className="flex items-start justify-between">
-                    <span className={`flex h-6 items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-wider ${cfg.bg} ${cfg.color}`}>
-                      {opp.impact} Impact
-                    </span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`flex h-6 items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-wider ${cfg.bg} ${cfg.color}`}>
+                        {opp.impact} Impact
+                      </span>
+                      {opp.gapType && gapTypeConfig[opp.gapType] && (
+                        <span className={`flex h-6 items-center rounded-full border px-2.5 text-[10px] font-bold uppercase tracking-wider ${gapTypeConfig[opp.gapType].bg} ${gapTypeConfig[opp.gapType].color} ${gapTypeConfig[opp.gapType].border}`}>
+                          {gapTypeConfig[opp.gapType].label}
+                        </span>
+                      )}
+                    </div>
                     {opp.applied && (
                       <Badge variant="secondary" className="gap-1 text-xs">
                         <Check className="h-3 w-3 text-success" />
-                        Added to Innovation Strategy
+                        Added to Strategy
                       </Badge>
                     )}
                   </div>
+
+                  {opp.relatedFeatureKeys && opp.relatedFeatureKeys.length > 0 && (
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                      {opp.relatedFeatureKeys.map((fk) => (
+                        <span key={fk} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold text-foreground">
+                          {fk}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   <h3 className="mt-3 text-base font-semibold text-foreground">
                     {opp.title}
                   </h3>
@@ -233,18 +301,22 @@ export default function InnovationGapPage() {
                   <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border/60 pt-3">
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Expected Impact
+                        Differentiation
                       </p>
-                      <p className="mt-0.5 text-xs font-medium text-success">
-                        {opp.expectedImpact}
+                      <p className="mt-0.5 text-xs font-semibold text-foreground">
+                        {opp.differentiationScore != null
+                          ? `${opp.differentiationScore}/100`
+                          : (opp.impact === 'High' ? 'Strong' : 'Moderate')}
                       </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Differentiation
+                        Prior-Art Coverage
                       </p>
-                      <p className="mt-0.5 text-xs font-medium text-foreground">
-                        {opp.impact === 'High' ? 'Strong' : 'Moderate'}
+                      <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
+                        {opp.coverage != null
+                          ? `${Math.round(opp.coverage * 100)}%`
+                          : 'Limited'}
                       </p>
                     </div>
                   </div>
@@ -284,6 +356,7 @@ export default function InnovationGapPage() {
             );
           })}
         </div>
+        )}
       </motion.div>
 
       {/* Next step */}

@@ -48,7 +48,7 @@ const previewItems = [
 
 export default function NewAnalysisPage() {
   const router = useRouter();
-  const { setInvention } = useDemo();
+  const { setInvention, setAnalysis } = useDemo();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -77,14 +77,19 @@ export default function NewAnalysisPage() {
     setCurrentStep(0);
 
     try {
-      // Save invention payload to PostgreSQL database via API
+      // Execute invention creation and deterministic analysis pipeline in PostgreSQL
       const res = await fetch('/api/inventions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
 
-      if (!res.ok) {
+      if (res.ok) {
+        const data = await res.json();
+        if (data.analysis) {
+          setAnalysis(data.analysis);
+        }
+      } else {
         const errorData = await res.json();
         console.warn('API save notice:', errorData.error);
       }
@@ -606,7 +611,7 @@ export default function NewAnalysisPage() {
       {/* Info banner */}
       <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
         <Badge variant="secondary" className="text-[10px]">Demo</Badge>
-        Prefilled with a realistic example. Click "Load Demo Invention" to reset.
+        Prefilled with a realistic example. Click &quot;Load Demo Invention&quot; to reset.
       </div>
     </div>
   );

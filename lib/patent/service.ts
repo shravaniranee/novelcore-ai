@@ -1,21 +1,37 @@
 import { prisma } from '@/lib/prisma';
-import { LensPatentProvider } from './providers/lens';
+import { DummyPatentProvider } from './providers/dummy';
 import { PatentsViewProvider } from './providers/patentsview';
 import { NormalizedPatentDocument, PatentProvider, PatentSearchOptions } from './types';
 import { embedAndStorePriorArtDoc } from '@/lib/embedding/service';
 
 /**
- * Default Patent Provider Instance
- * Can be swapped easily (e.g. PatentsViewProvider, LensPatentProvider, EPOProvider) without altering application logic.
+ * Factory creating active Patent Provider based on DEMO_MODE configuration.
  */
-let defaultPatentProvider: PatentProvider = new PatentsViewProvider();
+function createDefaultProvider(): PatentProvider {
+  const isDemoMode = process.env.DEMO_MODE !== 'false'; // Defaults to DEMO mode for safety
+  if (isDemoMode) {
+    return new DummyPatentProvider();
+  }
+  return new PatentsViewProvider();
+}
+
+let activePatentProvider: PatentProvider = createDefaultProvider();
 
 export function setPatentProvider(provider: PatentProvider) {
-  defaultPatentProvider = provider;
+  const isDemoMode = process.env.DEMO_MODE !== 'false';
+  if (isDemoMode && !(provider instanceof DummyPatentProvider)) {
+    console.warn(`[Security Guard] Blocked attempt to register external provider '${provider.name}' while DEMO_MODE is active.`);
+    return;
+  }
+  activePatentProvider = provider;
 }
 
 export function getPatentProvider(): PatentProvider {
-  return defaultPatentProvider;
+  const isDemoMode = process.env.DEMO_MODE !== 'false';
+  if (isDemoMode && !(activePatentProvider instanceof DummyPatentProvider)) {
+    activePatentProvider = new DummyPatentProvider();
+  }
+  return activePatentProvider;
 }
 
 export interface IngestionResult {
@@ -29,21 +45,18 @@ export interface IngestionResult {
 }
 
 /**
- * Core Patent Ingestion Pipeline:
- * 1. Queries PatentProvider API for normalized patent documents.
- * 2. Normalizes records into PriorArtDocument fields (publicationNumber, title, abstract, claims, dates, IPC/CPC, inventors, applicants, source, url, rawMetadata).
- * 3. Upserts records into PostgreSQL (idempotent duplicate prevention via publicationNumber @unique index).
- * 4. Automatically triggers vector embedding generation via EmbeddingProvider.
- * 5. Persists embedding, embeddingModel, and embeddingDim into pgvector.
- * 6. NO Groq LLM calls executed during ingestion.
+ * Searches patent data provider and ingests/upserts normalized results into PostgreSQL PriorArtDocument model.
+ * Idempotent duplicate prevention via publicationNumber unique index.
+ * Automatically computes and persists vector embeddings via pgvector.
  */
 export async function searchAndIngestPriorArt(
   options: PatentSearchOptions,
   customProvider?: PatentProvider
 ): Promise<IngestionResult[]> {
-  const provider = customProvider || getPatentProvider();
+  const isDemoMode = process.env.DEMO_MODE !== 'false';
+  const provider = isDemoMode ? new DummyPatentProvider() : (customProvider || getPatentProvider());
 
-  // 1. Search provider API
+  // 1. Search provider (in Demo mode, queries local curated dataset with zero external network calls)
   const rawNormalizedDocs = await provider.search(options);
 
   // 2. Ingest, deduplicate, and embed each document in PostgreSQL
@@ -60,41 +73,51 @@ export async function searchAndIngestPriorArt(
 
     const action = existingDoc ? 'updated' : 'created';
 
-    // Upsert into Prisma PriorArtDocument table (Idempotent duplicate prevention)
+    // Upsert into Prisma PriorArtDocument table
     const dbRecord = await prisma.priorArtDocument.upsert({
       where: { publicationNumber: doc.publicationNumber },
       update: {
+        externalId: doc.externalId || doc.publicationNumber,
         title: doc.title,
         abstract: doc.abstract,
         claimsText: claimsTextStr,
-        source: doc.source,
+        description: doc.description || doc.abstract,
+        source: doc.source || 'DEMO',
         filingDate: doc.filingDate,
         publicationDate: doc.publicationDate,
+        priorityDate: doc.priorityDate,
         ipcCodes: doc.ipcCodes,
+        cpcCodes: doc.cpcCodes,
+        inventors: doc.inventors,
+        applicants: doc.applicants,
+        assignees: doc.assignees || doc.applicants,
+        sourceUrl: doc.sourceUrl || doc.url,
         metadata: {
-          cpcCodes: doc.cpcCodes,
-          inventors: doc.inventors,
-          applicants: doc.applicants,
-          url: doc.url,
-          ...doc.rawMetadata,
+          technologyDomain: doc.technologyDomain,
+          ...(doc.rawMetadata || {}),
         },
       },
       create: {
+        externalId: doc.externalId || doc.publicationNumber,
         publicationNumber: doc.publicationNumber,
         title: doc.title,
         abstract: doc.abstract,
         claimsText: claimsTextStr,
-        source: doc.source,
-        jurisdiction: doc.publicationNumber.split('-')[0] || 'US',
+        description: doc.description || doc.abstract,
+        source: doc.source || 'DEMO',
+        jurisdiction: doc.jurisdiction || 'US',
         filingDate: doc.filingDate,
         publicationDate: doc.publicationDate,
+        priorityDate: doc.priorityDate,
         ipcCodes: doc.ipcCodes,
+        cpcCodes: doc.cpcCodes,
+        inventors: doc.inventors,
+        applicants: doc.applicants,
+        assignees: doc.assignees || doc.applicants,
+        sourceUrl: doc.sourceUrl || doc.url,
         metadata: {
-          cpcCodes: doc.cpcCodes,
-          inventors: doc.inventors,
-          applicants: doc.applicants,
-          url: doc.url,
-          ...doc.rawMetadata,
+          technologyDomain: doc.technologyDomain,
+          ...(doc.rawMetadata || {}),
         },
       },
     });
@@ -121,18 +144,26 @@ export async function searchAndIngestPriorArt(
       embeddingModel,
       embeddingDim,
       document: {
+        id: dbRecord.id,
+        externalId: dbRecord.externalId || dbRecord.publicationNumber,
         publicationNumber: dbRecord.publicationNumber,
         title: dbRecord.title,
         abstract: dbRecord.abstract,
         claims: dbRecord.claimsText ? dbRecord.claimsText.split('\n\n') : [],
+        description: dbRecord.description || '',
         source: dbRecord.source,
+        jurisdiction: dbRecord.jurisdiction,
         filingDate: dbRecord.filingDate,
         publicationDate: dbRecord.publicationDate,
+        priorityDate: dbRecord.priorityDate,
         ipcCodes: dbRecord.ipcCodes,
-        cpcCodes: (dbRecord.metadata as any)?.cpcCodes || [],
-        inventors: (dbRecord.metadata as any)?.inventors || [],
-        applicants: (dbRecord.metadata as any)?.applicants || [],
-        url: (dbRecord.metadata as any)?.url || null,
+        cpcCodes: dbRecord.cpcCodes,
+        inventors: dbRecord.inventors,
+        applicants: dbRecord.applicants,
+        assignees: dbRecord.assignees,
+        url: dbRecord.sourceUrl,
+        sourceUrl: dbRecord.sourceUrl,
+        technologyDomain: (dbRecord.metadata as any)?.technologyDomain || 'General Technology',
         rawMetadata: (dbRecord.metadata as any) || {},
       },
     });
@@ -142,42 +173,48 @@ export async function searchAndIngestPriorArt(
 }
 
 /**
- * Fetches a single prior art document by publication number, attempting local DB lookup first then provider API.
+ * Fetches a single prior art document by publication number, attempting local DB lookup first then provider.
  */
 export async function getPriorArtByPublicationNumber(
   publicationNumber: string,
   customProvider?: PatentProvider
 ): Promise<NormalizedPatentDocument | null> {
-  // 1. Check local PostgreSQL database first
   const localDbDoc = await prisma.priorArtDocument.findUnique({
     where: { publicationNumber },
   });
 
   if (localDbDoc) {
     return {
+      id: localDbDoc.id,
+      externalId: localDbDoc.externalId || localDbDoc.publicationNumber,
       publicationNumber: localDbDoc.publicationNumber,
       title: localDbDoc.title,
       abstract: localDbDoc.abstract,
       claims: localDbDoc.claimsText ? localDbDoc.claimsText.split('\n\n') : [],
+      description: localDbDoc.description || '',
       source: localDbDoc.source,
+      jurisdiction: localDbDoc.jurisdiction,
       filingDate: localDbDoc.filingDate,
       publicationDate: localDbDoc.publicationDate,
+      priorityDate: localDbDoc.priorityDate,
       ipcCodes: localDbDoc.ipcCodes,
-      cpcCodes: (localDbDoc.metadata as any)?.cpcCodes || [],
-      inventors: (localDbDoc.metadata as any)?.inventors || [],
-      applicants: (localDbDoc.metadata as any)?.applicants || [],
-      url: (localDbDoc.metadata as any)?.url || null,
+      cpcCodes: localDbDoc.cpcCodes,
+      inventors: localDbDoc.inventors,
+      applicants: localDbDoc.applicants,
+      assignees: localDbDoc.assignees,
+      url: localDbDoc.sourceUrl,
+      sourceUrl: localDbDoc.sourceUrl,
+      technologyDomain: (localDbDoc.metadata as any)?.technologyDomain || 'General Technology',
       rawMetadata: (localDbDoc.metadata as any) || {},
     };
   }
 
-  // 2. Fall back to provider lookup if not found locally
-  const provider = customProvider || getPatentProvider();
-  const remoteDoc = await provider.getDocument(publicationNumber);
+  const isDemoMode = process.env.DEMO_MODE !== 'false';
+  const provider = isDemoMode ? new DummyPatentProvider() : (customProvider || getPatentProvider());
+  const remoteDoc = await provider.getByPublicationNumber(publicationNumber);
 
   if (!remoteDoc) return null;
 
-  // Ingest remote doc into local database
   const ingested = await searchAndIngestPriorArt({ query: publicationNumber }, provider);
   return ingested[0]?.document || remoteDoc;
 }

@@ -46,6 +46,7 @@ enum RiskLevel {
   LOW
   MEDIUM
   HIGH
+  CRITICAL
 }
 
 enum ImpactLevel {
@@ -74,10 +75,39 @@ enum ObjectionCategory {
   OTHER
 }
 
+enum ExaminerReviewStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum ExaminerFindingType {
+  POTENTIAL_ANTICIPATION
+  POTENTIAL_OBVIOUSNESS
+  POTENTIAL_SUPPORT_CONCERN
+  EVIDENCE_INSUFFICIENT
+  NO_MATERIAL_CONCERN
+}
+
 enum ReportStatus {
   GENERATING
   READY
   FAILED
+}
+
+enum OverlapStatus {
+  DISCLOSED
+  PARTIAL
+  NOT_DISCLOSED
+  INSUFFICIENT_EVIDENCE
+}
+
+enum GapType {
+  CROWDED
+  MODERATELY_EXPLORED
+  PARTIALLY_EXPLORED
+  UNDERSERVED
+  POTENTIALLY_DISTINCTIVE
 }
 
 // ------------------------------------------------------------------------------
@@ -163,6 +193,8 @@ model Invention {
   examinerReviews ExaminerReview[]
   reports         Report[]
   opportunities   AnalysisOpportunity[]
+  featureOverlapEntries FeatureOverlapMatrixEntry[]
+  inventionFeatures     InventionFeature[]
 
   @@index([userId])
   @@index([organizationId])
@@ -192,6 +224,13 @@ model AnalysisRun {
   priorArtMatches PriorArtMatch[]
   opportunities   AnalysisOpportunity[]
   reports         Report[]
+  featureOverlapEntries FeatureOverlapMatrixEntry[]
+  inventionFeatures     InventionFeature[]
+  noveltyAssessment     NoveltyAssessment?
+  claims                Claim[]
+  claimVersions         ClaimVersion[]
+  examinerReviews       ExaminerReview[]
+  analysisMode          String?         @default("DETERMINISTIC_FALLBACK")
 
   @@index([inventionId])
   @@index([status])
@@ -201,15 +240,23 @@ model AnalysisRun {
 
 model PriorArtDocument {
   id                String    @id @default(uuid())
+  externalId        String?
   publicationNumber String    @unique
   title             String
   abstract          String    @db.Text
   claimsText        String?   @db.Text
-  source            String    // USPTO, EPO, GooglePatents, ArXiv
+  description       String?   @db.Text
+  source            String    // USPTO, EPO, GooglePatents, ArXiv, DEMO
   jurisdiction      String    @default("US")
   filingDate        DateTime?
   publicationDate   DateTime?
+  priorityDate      DateTime?
   ipcCodes          String[]  @default([])
+  cpcCodes          String[]  @default([])
+  inventors         String[]  @default([])
+  applicants        String[]  @default([])
+  assignees         String[]  @default([])
+  sourceUrl         String?
   metadata          Json?     @default("{}")
 
   // Vector embedding column using pgvector (1536 dimensions for vector similarity search)
@@ -221,9 +268,12 @@ model PriorArtDocument {
   updatedAt         DateTime  @updatedAt
 
   matches PriorArtMatch[]
+  featureOverlapEntries FeatureOverlapMatrixEntry[]
+  noveltyReferenceAssessments NoveltyReferenceAssessment[]
 
   @@index([source])
   @@index([jurisdiction])
+  @@index([externalId])
   @@map("prior_art_documents")
 }
 
@@ -252,6 +302,7 @@ model PriorArtMatch {
 model Claim {
   id                String      @id @default(uuid())
   inventionId       String
+  analysisRunId     String?
   claimNumber       Int
   claimType         ClaimType   @default(INDEPENDENT)
   parentClaimNumber Int?
@@ -260,54 +311,135 @@ model Claim {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  invention Invention      @relation(fields: [inventionId], references: [id], onDelete: Cascade)
-  versions  ClaimVersion[]
+  invention   Invention    @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  analysisRun AnalysisRun? @relation(fields: [analysisRunId], references: [id], onDelete: SetNull)
+  versions    ClaimVersion[]
 
   @@unique([inventionId, claimNumber])
   @@index([inventionId])
+  @@index([analysisRunId])
   @@map("claims")
 }
 
 model ClaimVersion {
-  id                     String   @id @default(uuid())
-  claimId                String
-  versionNumber          Int
-  claimText              String   @db.Text
-  isOriginal             Boolean  @default(false)
-  isOptimized            Boolean  @default(false)
-  riskReduction          String?
-  differentiationNotes   String?  @db.Text
-  elementOverlapAnalysis Json?    @default("[]")
-  createdAt              DateTime @default(now())
+  id                         String   @id @default(uuid())
+  claimId                    String
+  analysisRunId              String?
+  versionNumber              Int
+  claimText                  String   @db.Text
+  isOriginal                 Boolean  @default(false)
+  isOptimized                Boolean  @default(false)
+  source                     String   @default("AI_ASSISTED")
+  model                      String?
+  optimizationReason         String?
+  groundedFeatureRatio       Float    @default(1.0)
+  featureCount               Int      @default(0)
+  groundedFeatureCount       Int      @default(0)
+  singleReferenceCoverage    Float    @default(0.0)
+  collectivePriorArtCoverage Float    @default(0.0)
+  evidenceConfidence         Float    @default(0.0)
+  differentiationScore       Int      @default(50)
+  vulnerabilityIndicator     String   @default("LOW")
+  vulnerabilityScore         Int      @default(0)
+  vulnerabilityDetails       Json?
+  priorArtVulnerabilities    Json?
+  limitations                String?
+  riskReduction              String?
+  differentiationNotes       String?  @db.Text
+  elementOverlapAnalysis     Json?    @default("[]")
+  createdAt                  DateTime @default(now())
 
-  claim Claim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  claim       Claim          @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  analysisRun AnalysisRun?   @relation(fields: [analysisRunId], references: [id], onDelete: SetNull)
+  elements    ClaimElement[]
 
   @@unique([claimId, versionNumber])
   @@index([claimId])
+  @@index([analysisRunId])
   @@map("claim_versions")
 }
 
-model ExaminerReview {
-  id                String            @id @default(uuid())
-  inventionId       String
-  overallRisk       RiskLevel         @default(MEDIUM)
-  objectionCategory ObjectionCategory
-  severity          RiskLevel         @default(MEDIUM)
-  title             String
-  concern           String            @db.Text
-  evidence          String?           @db.Text
-  recommendation    String            @db.Text
-  isResolved        Boolean           @default(false)
-  resolvedAt        DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+model ClaimElement {
+  id                 String    @id @default(uuid())
+  claimVersionId     String
+  inventionFeatureId String?
+  featureKey         String
+  elementKey         String
+  text               String    @db.Text
+  order              Int
+  elementType        String    @default("LIMITATION")
+  createdAt          DateTime  @default(now())
 
-  invention Invention @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  claimVersion     ClaimVersion      @relation(fields: [claimVersionId], references: [id], onDelete: Cascade)
+  inventionFeature InventionFeature? @relation(fields: [inventionFeatureId], references: [id], onDelete: SetNull)
+
+  @@unique([claimVersionId, elementKey])
+  @@index([claimVersionId])
+  @@index([inventionFeatureId])
+  @@index([featureKey])
+  @@map("claim_elements")
+}
+
+model ExaminerReview {
+  id                String               @id @default(uuid())
+  analysisRunId     String?
+  inventionId       String
+  claimId           String?
+  claimVersionId    String?
+  status            ExaminerReviewStatus @default(COMPLETED)
+  overallRisk       RiskLevel            @default(MEDIUM)
+  confidence        Float                @default(0.0)
+  claimReviews      Json?                @default("[]")
+
+  // Legacy fields for backward compatibility
+  objectionCategory ObjectionCategory?   @default(OTHER)
+  severity          RiskLevel?           @default(MEDIUM)
+  title             String?              @default("Examiner Simulation Review")
+  concern           String?              @db.Text
+  evidence          String?              @db.Text
+  recommendation    String?              @db.Text
+  isResolved        Boolean              @default(false)
+  resolvedAt        DateTime?
+
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  invention   Invention         @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  analysisRun AnalysisRun?      @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  findings    ExaminerFinding[]
 
   @@index([inventionId])
+  @@index([analysisRunId])
+  @@index([status])
   @@index([isResolved])
   @@index([severity])
   @@map("examiner_reviews")
+}
+
+model ExaminerFinding {
+  id                    String              @id @default(uuid())
+  examinerReviewId      String
+  findingType           ExaminerFindingType
+  severity              RiskLevel           @default(MEDIUM)
+  title                 String
+  explanation           String              @db.Text
+  confidence            Float               @default(0.0)
+  claimNumber           Int
+  claimVersionNumber    Int
+  claimElementKeys      String[]            @default([])
+  priorArtDocumentIds   String[]            @default([])
+  supportingFeatureKeys String[]            @default([])
+  evidence              Json                @default("[]")
+  recommendation        String              @db.Text
+  provenance            String              @default("DETERMINISTIC") // 'DETERMINISTIC' | 'GROQ_ASSISTED'
+  createdAt             DateTime            @default(now())
+
+  examinerReview ExaminerReview @relation(fields: [examinerReviewId], references: [id], onDelete: Cascade)
+
+  @@index([examinerReviewId])
+  @@index([findingType])
+  @@index([claimNumber])
+  @@map("examiner_findings")
 }
 
 model Report {
@@ -333,23 +465,137 @@ model Report {
 }
 
 model AnalysisOpportunity {
-  id                String      @id @default(uuid())
-  inventionId       String
-  analysisRunId     String?
-  title             String
-  impact            ImpactLevel @default(MEDIUM)
-  whyItMatters      String      @db.Text
-  expectedImpact    String      @db.Text
-  recommendedAction String      @db.Text
-  applied           Boolean     @default(false)
-  appliedAt         DateTime?
-  createdAt         DateTime    @default(now())
+  id                    String      @id @default(uuid())
+  inventionId           String
+  analysisRunId         String?
+  opportunityKey        String?
+  gapType               GapType     @default(MODERATELY_EXPLORED)
+  title                 String
+  impact                ImpactLevel @default(MEDIUM)
+  whyItMatters          String      @db.Text
+  expectedImpact        String      @db.Text
+  recommendedAction     String      @db.Text
+  relatedFeatureKeys    String[]    @default([])
+  supportingPriorArtIds String[]    @default([])
+  coverage              Float       @default(0.0)
+  confidence            Float       @default(0.0)
+  differentiationScore  Int         @default(50)
+  evidenceDetails       Json?
+  limitations           String?     @db.Text
+  explanation           String?     @db.Text
+  explanationProvenance String?
+  applied               Boolean     @default(false)
+  appliedAt             DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @default(now()) @updatedAt
 
   invention   Invention    @relation(fields: [inventionId], references: [id], onDelete: Cascade)
   analysisRun AnalysisRun? @relation(fields: [analysisRunId], references: [id], onDelete: SetNull)
 
+  @@unique([analysisRunId, opportunityKey])
   @@index([inventionId])
   @@index([analysisRunId])
+  @@index([gapType])
   @@index([applied])
   @@map("analysis_opportunities")
+}
+
+model FeatureOverlapMatrixEntry {
+  id                 String        @id @default(uuid())
+  inventionId        String
+  analysisRunId      String
+  priorArtDocumentId String
+  featureId          String
+  overlapStatus      OverlapStatus
+  evidence           String        @db.Text
+  evidenceSource     String?       // title, abstract, claims, description
+  featureName        String?
+  featureDescription String?       @db.Text
+  explanation        String?       @db.Text
+  featureRecordId    String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  invention        Invention         @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  analysisRun      AnalysisRun       @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  priorArtDocument PriorArtDocument  @relation(fields: [priorArtDocumentId], references: [id], onDelete: Cascade)
+  featureRecord    InventionFeature? @relation(fields: [featureRecordId], references: [id], onDelete: SetNull)
+
+  @@unique([analysisRunId, priorArtDocumentId, featureId])
+  @@index([inventionId])
+  @@index([analysisRunId])
+  @@index([priorArtDocumentId])
+  @@index([featureId])
+  @@index([featureRecordId])
+  @@index([overlapStatus])
+  @@map("feature_overlap_matrix_entries")
+}
+
+model InventionFeature {
+  id            String    @id @default(uuid())
+  analysisRunId String
+  inventionId   String
+  featureKey    String    // e.g. "F1", "F2"
+  name          String
+  description   String    @db.Text
+  order         Int       @default(0)
+  source        String?   // 'ai_extracted' | 'user_defined' | 'fallback'
+  isNovelty     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  analysisRun   AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  invention     Invention   @relation(fields: [inventionId], references: [id], onDelete: Cascade)
+  matrixEntries FeatureOverlapMatrixEntry[]
+  claimElements ClaimElement[]
+
+  @@unique([analysisRunId, featureKey])
+  @@index([inventionId])
+  @@index([analysisRunId])
+  @@map("invention_features")
+}
+
+model NoveltyAssessment {
+  id                   String                       @id @default(uuid())
+  analysisRunId        String                       @unique
+  noveltyScore         Int                          // 0 - 100
+  noveltyBand          String                       // HIGH_NOVELTY, MODERATE_NOVELTY, LOW_NOVELTY, INSUFFICIENT_EVIDENCE
+  evidenceConfidence  Float                        // 0.0 - 1.0
+  singleReferenceRisk  String                       // LOW, MODERATE, HIGH, CRITICAL
+  collectiveCoverage   Float                        // 0.0 - 1.0
+  patentabilityRisk    RiskLevel                    @default(MEDIUM)
+  scoringBreakdown     Json                         @default("{}")
+  evidenceReferences   Json                         @default("[]")
+  groqExplanation      String?                      @db.Text
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  analysisRun          AnalysisRun                  @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  referenceAssessments NoveltyReferenceAssessment[]
+
+  @@index([analysisRunId])
+  @@index([noveltyBand])
+  @@map("novelty_assessments")
+}
+
+model NoveltyReferenceAssessment {
+  id                        String            @id @default(uuid())
+  noveltyAssessmentId       String
+  priorArtDocumentId        String
+  disclosedFeatureCount     Int               @default(0)
+  partialFeatureCount       Int               @default(0)
+  notDisclosedFeatureCount  Int               @default(0)
+  insufficientEvidenceCount Int               @default(0)
+  coverageRatio             Float             @default(0.0)
+  evidenceConfidence        Float             @default(0.0)
+  anticipationRisk          String            // LOW, MODERATE, HIGH, CRITICAL
+  evidenceDetails           Json              @default("[]")
+  createdAt                 DateTime          @default(now())
+
+  noveltyAssessment         NoveltyAssessment @relation(fields: [noveltyAssessmentId], references: [id], onDelete: Cascade)
+  priorArtDocument          PriorArtDocument  @relation(fields: [priorArtDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([noveltyAssessmentId, priorArtDocumentId])
+  @@index([noveltyAssessmentId])
+  @@index([priorArtDocumentId])
+  @@map("novelty_reference_assessments")
 }

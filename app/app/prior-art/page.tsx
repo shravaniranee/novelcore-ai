@@ -58,6 +58,30 @@ export default function PriorArtPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selected, setSelected] = useState<PriorArtResult | null>(null);
 
+  if (!analysis || !analysis.priorArt || analysis.priorArt.length === 0) {
+    return (
+      <div className="mx-auto max-w-7xl py-12">
+        <Card className="border-dashed border-border p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Search className="h-7 w-7" />
+          </div>
+          <h2 className="text-xl font-semibold text-foreground">No Prior Art Available</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Run an analysis to retrieve, score, and rank prior art documents from PostgreSQL and pgvector.
+          </p>
+          <div className="mt-6">
+            <Link href="/app/new">
+              <Button className="gap-2">
+                <ArrowRight className="h-4 w-4" />
+                Start New Analysis
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   let results = analysis.priorArt;
   if (simFilter !== 'all') {
     const min = simFilter === 'high' ? 80 : simFilter === 'medium' ? 65 : 0;
@@ -219,7 +243,16 @@ export default function PriorArtPage() {
         <p className="text-sm text-muted-foreground">
           {results.length} result{results.length !== 1 ? 's' : ''} found
         </p>
-        {results.map((pa, i) => {
+        {results.length === 0 ? (
+          <Card className="flex flex-col items-center justify-center border-dashed border-border py-16 text-center">
+            <Search className="mb-3 h-10 w-10 text-muted-foreground/40" />
+            <h3 className="text-base font-semibold text-foreground">No relevant prior art found</h3>
+            <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+              No matching prior art documents for the active filters or query.
+            </p>
+          </Card>
+        ) : (
+          results.map((pa, i) => {
           const overlap = getOverlapLevel(pa.similarity);
           const ocfg = overlapConfig[overlap];
           return (
@@ -306,7 +339,7 @@ export default function PriorArtPage() {
               </Card>
             </motion.div>
           );
-        })}
+        }))}
       </div>
 
       {/* Detail Modal */}
@@ -387,7 +420,7 @@ export default function PriorArtPage() {
                 <div className="mt-3 border-t border-primary/10 pt-3">
                   <p className="text-xs font-medium text-foreground">Potential Differentiation</p>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    Your invention's adaptive confidence scoring and multi-sensor fusion
+                    Your invention&apos;s adaptive confidence scoring and multi-sensor fusion
                     architecture are not present in this prior art. Emphasize these mechanisms
                     in your claims to establish inventive step.
                   </p>

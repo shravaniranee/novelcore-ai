@@ -47,6 +47,14 @@ class TestPatentProvider implements PatentProvider {
     return results[0] || null;
   }
 
+  public async getByPublicationNumber(publicationNumber: string): Promise<NormalizedPatentDocument | null> {
+    return this.getDocument(publicationNumber);
+  }
+
+  public async getById(id: string): Promise<NormalizedPatentDocument | null> {
+    return this.getDocument(id);
+  }
+
   public normalizeDocument(raw: any): NormalizedPatentDocument {
     return {
       publicationNumber: raw?.publicationNumber || `US-FALLBACK-${Date.now()}`,

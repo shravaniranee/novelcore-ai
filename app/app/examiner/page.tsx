@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
@@ -20,10 +21,16 @@ import { ScoreRing } from '@/components/score-ring';
 import { useDemo } from '@/lib/demo-context';
 import { toast } from 'sonner';
 
-const riskConfig = {
+const riskConfig: Record<string, { color: string; bg: string; border: string }> = {
   Low: { color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
   Medium: { color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
   High: { color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' },
+  Critical: { color: 'text-destructive', bg: 'bg-destructive/20', border: 'border-destructive/40' },
+  LOW: { color: 'text-success', bg: 'bg-success/10', border: 'border-success/20' },
+  MEDIUM: { color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/20' },
+  HIGH: { color: 'text-destructive', bg: 'bg-destructive/10', border: 'border-destructive/20' },
+  CRITICAL: { color: 'text-destructive', bg: 'bg-destructive/20', border: 'border-destructive/40' },
+  INSUFFICIENT_EVIDENCE: { color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border' },
 };
 
 const statusConfig = {
@@ -34,6 +41,60 @@ const statusConfig = {
 
 export default function ExaminerPage() {
   const { analysis, resolvedObjections, resolveObjection, patentReadiness } = useDemo();
+  const [liveReview, setLiveReview] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!analysis?.id) return;
+    let isMounted = true;
+    setIsLoading(true);
+    setLoadError(null);
+    fetch(`/api/analysis/${analysis.id}/examiner`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Examiner review simulation not found.');
+        return res.json();
+      })
+      .then((data) => {
+        if (isMounted && data?.success) {
+          setLiveReview(data);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) setLoadError(err?.message || 'Error loading examiner review');
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [analysis?.id]);
+
+  if (!analysis || !analysis.examinerObjections || analysis.examinerObjections.length === 0) {
+    return (
+      <div className="mx-auto max-w-5xl py-12">
+        <Card className="border-dashed border-border p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Scale className="h-7 w-7" />
+          </div>
+          <h2 className="text-xl font-semibold text-foreground">No Examiner Review Available</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Analyze an invention to simulate USPTO statutory 102/103 examination and office action rejections.
+          </p>
+          <div className="mt-6">
+            <Link href="/app/new">
+              <Button className="gap-2">
+                <ArrowRight className="h-4 w-4" />
+                Start New Analysis
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   const { examinerObjections, examinerPositives, examinerStatusChecks } = analysis;
   const allResolved = resolvedObjections.length === examinerObjections.length;
   const effectiveReadiness = allResolved ? Math.min(88, patentReadiness + 4) : patentReadiness;
@@ -58,10 +119,10 @@ export default function ExaminerPage() {
       </motion.div>
 
       {/* Disclaimer */}
-      <div className="flex items-start gap-2 rounded-xl border border-warning/20 bg-warning/5 p-4 text-xs text-muted-foreground">
+      <div className="flex items-start gap-2.5 rounded-xl border border-warning/20 bg-warning/5 p-4 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         <span>
-          This is an AI-generated simulation for research and preparation purposes. It is not legal advice or an actual patent examination.
+          <strong>Educational Notice:</strong> NovelCore AI provides AI-assisted patent intelligence and is not a substitute for professional legal advice. Examiner simulation is an evidence-based heuristic and is not an actual patent examination or legal opinion.
         </span>
       </div>
 
@@ -113,9 +174,124 @@ export default function ExaminerPage() {
         transition={{ duration: 0.4, delay: 0.2 }}
         className="space-y-4"
       >
-        <h2 className="text-lg font-semibold text-foreground">Examiner Objections</h2>
-        {examinerObjections.map((obj, i) => {
-          const cfg = riskConfig[obj.severity];
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">Examiner Findings & Objections</h2>
+          {liveReview && (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+              {liveReview.findingsCount} Simulated Findings
+            </Badge>
+          )}
+        </div>
+
+        {isLoading && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
+            <span>Loading pre-filing examiner review...</span>
+          </div>
+        )}
+
+        {liveReview?.findings && liveReview.findings.length > 0 ? (
+          liveReview.findings.map((finding: any, i: number) => {
+            const cfg = riskConfig[finding.severity] || riskConfig.Low;
+            const findingId = finding.id || `finding-${i + 1}`;
+            const isResolved = resolvedObjections.includes(findingId);
+
+            return (
+              <motion.div
+                key={findingId}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 + i * 0.05 }}
+              >
+                <Card className={`border-border p-5 transition-all ${isResolved ? 'border-success/30 bg-success/5' : ''}`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Claim #{finding.claimNumber} (v{finding.claimVersionNumber})
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${cfg.bg} ${cfg.color}`}>
+                          {finding.severity}
+                        </span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {finding.findingType.replace(/_/g, ' ')}
+                        </Badge>
+                        <Badge variant="secondary" className="text-[9px]">
+                          {finding.provenance === 'GROQ_ASSISTED' ? 'AI Refined' : 'Deterministic'}
+                        </Badge>
+                        {isResolved && (
+                          <Badge variant="secondary" className="gap-1 text-[10px]">
+                            <Check className="h-3 w-3 text-success" />
+                            Addressed
+                          </Badge>
+                        )}
+                      </div>
+                      <h3 className="mt-2 text-sm font-semibold text-foreground">{finding.title}</h3>
+                      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                        {finding.explanation}
+                      </p>
+
+                      {/* Cited Evidence */}
+                      {finding.evidence && finding.evidence.length > 0 && (
+                        <div className="mt-3 space-y-1.5 rounded-lg border border-border/60 bg-muted/40 p-3">
+                          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                            Prior-Art Evidence Citations
+                          </p>
+                          {finding.evidence.slice(0, 3).map((ev: any, evIdx: number) => (
+                            <div key={evIdx} className="text-xs text-foreground/80">
+                              <span className="font-semibold text-foreground">{ev.publicationNumber}</span>: &ldquo;{ev.evidenceQuote}&rdquo;
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="mt-3 rounded-lg border border-border/60 bg-secondary/30 p-3">
+                        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Drafting Recommendation
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {finding.recommendation}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!isResolved ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-4 w-full sm:w-auto"
+                      onClick={() => {
+                        resolveObjection(findingId);
+                        toast.success('Claim strategy updated.', {
+                          description: `Claim #${finding.claimNumber} finding addressed.`,
+                        });
+                      }}
+                    >
+                      <Zap className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                      Resolve
+                    </Button>
+                  ) : (
+                    <div className="mt-4 flex items-center gap-2 text-xs font-medium text-success">
+                      <Check className="h-3.5 w-3.5" />
+                      Addressed
+                    </div>
+                  )}
+                </Card>
+              </motion.div>
+            );
+          })
+        ) : examinerObjections.length === 0 ? (
+          <Card className="flex flex-col items-center justify-center border-dashed border-border py-16 text-center">
+            <Scale className="mb-3 h-10 w-10 text-muted-foreground/40" />
+            <h3 className="text-base font-semibold text-foreground">No examiner simulation available</h3>
+            <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+              Run an invention analysis to simulate pre-filing examiner review and objections.
+            </p>
+          </Card>
+        ) : (
+          examinerObjections.map((obj, i) => {
+          const cfg = riskConfig[obj.severity] || riskConfig.Low;
           const isResolved = resolvedObjections.includes(obj.id);
           return (
             <motion.div
@@ -179,7 +355,7 @@ export default function ExaminerPage() {
               </Card>
             </motion.div>
           );
-        })}
+        }))}
       </motion.div>
 
       {/* Positive Findings */}

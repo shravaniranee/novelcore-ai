@@ -34,6 +34,28 @@ const reportSections = [
 export default function ReportPage() {
   const { analysis, reportGenerated, setReportGenerated, patentReadiness } = useDemo();
 
+  if (!analysis || !analysis.title) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-20 text-center">
+          <FileText className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <h2 className="text-xl font-bold text-foreground">No Report Available</h2>
+          <p className="mt-1 max-w-md text-xs text-muted-foreground">
+            Complete an invention analysis to generate and export an Innovation Intelligence Report.
+          </p>
+          <div className="mt-6">
+            <Link href="/app/new">
+              <Button size="sm">
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                Start Analysis
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       {/* Header */}

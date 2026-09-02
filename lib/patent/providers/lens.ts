@@ -55,6 +55,10 @@ export class LensPatentProvider implements PatentProvider {
   }
 
   public async search(options: PatentSearchOptions): Promise<NormalizedPatentDocument[]> {
+    if (process.env.DEMO_MODE !== 'false') {
+      throw new Error('Safety Violation: LensPatentProvider is disabled while DEMO_MODE is active.');
+    }
+
     const apiKey = this.getApiKey();
 
     // If no live API key is configured, return realistic normalized patent dataset for offline/dev testing
@@ -232,5 +236,13 @@ export class LensPatentProvider implements PatentProvider {
     }
 
     return fallbackList.slice(0, options.limit || 10);
+  }
+
+  public async getByPublicationNumber(publicationNumber: string): Promise<NormalizedPatentDocument | null> {
+    return this.getDocument(publicationNumber);
+  }
+
+  public async getById(id: string): Promise<NormalizedPatentDocument | null> {
+    return this.getDocument(id);
   }
 }

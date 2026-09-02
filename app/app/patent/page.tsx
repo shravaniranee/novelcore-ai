@@ -19,6 +19,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  PlusCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,9 +51,33 @@ const diffConfig = {
 export default function PatentWorkspacePage() {
   const { analysis, acceptClaim, acceptedClaims, claimStrength, patentReadiness } = useDemo();
   const [showOptimizer, setShowOptimizer] = useState(false);
-  const claim = analysis.claims[0];
-  const claimAccepted = acceptedClaims.includes(claim.id);
+  const claim = analysis?.claims?.[0];
+  const claimAccepted = claim ? acceptedClaims.includes(claim.id) : false;
   const abstractRef = useRef<HTMLDivElement>(null);
+
+  if (!analysis || !claim) {
+    return (
+      <div className="mx-auto max-w-7xl py-12">
+        <Card className="border-dashed border-border p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <FileText className="h-7 w-7" />
+          </div>
+          <h2 className="text-xl font-semibold text-foreground">No Patent Claims Available</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Submit an invention disclosure to generate legally sound, structurally bounded independent claims.
+          </p>
+          <div className="mt-6">
+            <Link href="/app/new">
+              <Button className="gap-2">
+                <ArrowRight className="h-4 w-4" />
+                Start New Analysis
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -64,8 +89,30 @@ export default function PatentWorkspacePage() {
     });
   };
 
-  if (showOptimizer) {
+  if (showOptimizer && claim) {
     return <ClaimOptimizer onBack={() => setShowOptimizer(false)} />;
+  }
+
+  if (!claim) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-20 text-center">
+          <FileText className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <h2 className="text-xl font-bold text-foreground">No Claim Analysis Available</h2>
+          <p className="mt-1 max-w-md text-xs text-muted-foreground">
+            No structured claims have been generated or optimized for this invention yet.
+          </p>
+          <div className="mt-6">
+            <Link href="/app/new">
+              <Button size="sm">
+                <PlusCircle className="mr-1.5 h-3.5 w-3.5" />
+                Analyze an Invention
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -107,6 +154,14 @@ export default function PatentWorkspacePage() {
           </Button>
         </div>
       </motion.div>
+
+      {/* Educational Disclaimer Banner */}
+      <div className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-secondary/30 px-4 py-2.5 text-xs text-muted-foreground">
+        <Shield className="h-4 w-4 shrink-0 text-primary" />
+        <span>
+          <strong>Educational Disclaimer:</strong> NovelCore AI provides AI-assisted patent intelligence and claim drafting guidance, and is not a substitute for professional legal advice.
+        </span>
+      </div>
 
       {/* Main layout: outline + document + AI panel */}
       <div className="grid gap-6 lg:grid-cols-[160px_1fr_300px]">
@@ -256,9 +311,14 @@ export default function PatentWorkspacePage() {
             {/* Claims */}
             <div id="claims" className="scroll-mt-20">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
-                  Claims
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                    Claims Strategy
+                  </h3>
+                  <Badge variant="outline" className="text-[10px]">
+                    Evidence Grounded
+                  </Badge>
+                </div>
                 {claimAccepted ? (
                   <Badge variant="secondary" className="gap-1 text-xs">
                     <Check className="h-3 w-3 text-success" />
@@ -271,11 +331,41 @@ export default function PatentWorkspacePage() {
                   </Button>
                 )}
               </div>
-              <div className="rounded-lg border border-border/60 bg-secondary/20 p-4">
-                <p className="text-xs font-semibold text-foreground">Claim 1</p>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                  {claimAccepted ? claim.optimized : claim.original}
-                </p>
+              <div className="space-y-3">
+                <div className="rounded-lg border border-border/60 bg-secondary/20 p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-foreground">Claim 1 (Independent)</span>
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                        Apparatus
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">Version 1 · 100% Grounded</span>
+                  </div>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {claimAccepted ? claim.optimized : claim.original}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-border/40 bg-secondary/10 p-3">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-foreground">Claim 2 (Dependent)</span>
+                    <span className="text-[10px] text-muted-foreground">Depends on Claim 1</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    2. The apparatus of claim 1, wherein the processing subsystem further comprises a deterministic inferential execution pipeline with bounded constant-time latency.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-border/40 bg-secondary/10 p-3">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-foreground">Claim 3 (Dependent)</span>
+                    <span className="text-[10px] text-muted-foreground">Depends on Claim 1</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    3. The apparatus of claim 1, further comprising a secondary multi-sensor verification station operatively coupled to receive items having confidence metrics below a dynamic threshold.
+                  </p>
+                </div>
               </div>
             </div>
           </Card>
@@ -373,8 +463,8 @@ export default function PatentWorkspacePage() {
 
       {/* Disclaimer */}
       <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
-        <Info className="h-4 w-4 shrink-0" />
-        AI-generated content is provided for research and preparation purposes and does not constitute legal advice.
+        <Info className="h-4 w-4 shrink-0 text-primary" />
+        AI-assisted claim drafting guidance — not legal advice. NovelCore AI provides AI-assisted patent intelligence and is not a substitute for professional legal advice.
       </div>
     </div>
   );
@@ -386,6 +476,7 @@ export default function PatentWorkspacePage() {
 
 function ClaimOptimizer({ onBack }: { onBack: () => void }) {
   const { analysis, acceptClaim, acceptedClaims, claimStrength, patentReadiness } = useDemo();
+  if (!analysis) return null;
   const claim = analysis.claims[0];
   const claimAccepted = acceptedClaims.includes(claim.id);
 

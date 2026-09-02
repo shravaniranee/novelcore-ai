@@ -5,16 +5,24 @@ import { EmbeddingProvider, EmbeddingResult } from '../types';
  * Deterministic helper generating normalized 1536-dim vectors when API key is placeholder/offline.
  */
 function generateDeterministicDummyVector(text: string, dimensions: number): number[] {
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    hash = (hash << 5) - hash + text.charCodeAt(i);
-    hash |= 0;
+  const words = text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter((w) => w.length > 2);
+  const vector: number[] = new Array(dimensions).fill(0);
+
+  if (words.length === 0) {
+    return vector;
   }
-  const vector: number[] = [];
-  for (let i = 0; i < dimensions; i++) {
-    const val = Math.sin(hash + i) * 0.1;
-    vector.push(val);
+
+  for (const word of words) {
+    let wordHash = 0;
+    for (let i = 0; i < word.length; i++) {
+      wordHash = (wordHash << 5) - wordHash + word.charCodeAt(i);
+      wordHash |= 0;
+    }
+    for (let d = 0; d < dimensions; d++) {
+      vector[d] += Math.sin(wordHash * 31 + d);
+    }
   }
+
   const norm = Math.sqrt(vector.reduce((sum, v) => sum + v * v, 0));
   return vector.map((v) => parseFloat((v / (norm || 1)).toFixed(6)));
 }
